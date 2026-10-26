@@ -8,6 +8,17 @@ let scene;
 let camera;
 let renderer;
 let animationFrame;
+let pointerLocked = false;
+
+const keys = {};
+const player = {
+  height: 1.7,
+  speed: 3.2,
+  runSpeed: 5.5,
+  sensitivity: 0.002,
+  yaw: 0,
+  pitch: 0
+};
 
 function initializeGame() {
   scene = new THREE.Scene();
@@ -21,25 +32,30 @@ function initializeGame() {
     100
   );
 
-  camera.position.set(0, 1.7, 4);
+  camera.position.set(0, player.height, 4);
 
   renderer = new THREE.WebGLRenderer({
     canvas,
-    antialias: true,
+    antialias: false,
     powerPreference: 'high-performance'
   });
 
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = false;
 
   createLevelOne();
+  addStartOverlay();
 
   window.addEventListener('resize', resizeGame);
+  window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('keyup', onKeyUp);
+  document.addEventListener('pointerlockchange', onPointerLockChange);
+  document.addEventListener('mousemove', onMouseMove);
+  canvas.addEventListener('click', requestPointerLock);
 
-  loading.querySelector('p').textContent = 'LEVEL 0 — INITIALIZED';
+  loading.classList.add('hidden');
 
-  // Keep the loading screen visible until the next development step.
   animate();
 }
 
@@ -63,32 +79,36 @@ function createLevelOne() {
     new THREE.PlaneGeometry(40, 40),
     floorMaterial
   );
-
   floor.rotation.x = -Math.PI / 2;
-  floor.position.y = 0;
   scene.add(floor);
 
   const ceiling = new THREE.Mesh(
     new THREE.PlaneGeometry(40, 40),
     ceilingMaterial
   );
-
   ceiling.rotation.x = Math.PI / 2;
   ceiling.position.y = 4;
   scene.add(ceiling);
 
-  // Four boundary walls for the first test room.
   addWall(0, 2, -20, 40, 4, 0.3, wallMaterial);
   addWall(0, 2, 20, 40, 4, 0.3, wallMaterial);
   addWall(-20, 2, 0, 0.3, 4, 40, wallMaterial);
   addWall(20, 2, 0, 0.3, 4, 40, wallMaterial);
 
-  const ambientLight = new THREE.AmbientLight('#fff1c2', 1.4);
-  scene.add(ambientLight);
+  // A few interior partitions make the space feel less like a box.
+  addWall(-5, 2, -5, 0.3, 4, 10, wallMaterial);
+  addWall(5, 2, 3, 0.3, 4, 10, wallMaterial);
+  addWall(0, 2, -10, 10, 4, 0.3, wallMaterial);
 
-  const ceilingLight = new THREE.PointLight('#fff4c9', 35, 22);
+  scene.add(new THREE.AmbientLight('#fff1c2', 1.5));
+
+  const ceilingLight = new THREE.PointLight('#fff4c9', 30, 24);
   ceilingLight.position.set(0, 3.6, 0);
   scene.add(ceilingLight);
+
+  const secondLight = new THREE.PointLight('#fff4c9', 20, 18);
+  secondLight.position.set(-8, 3.5, -8);
+  scene.add(secondLight);
 }
 
 function addWall(x, y, z, width, height, depth, material) {
@@ -96,36 +116,36 @@ function addWall(x, y, z, width, height, depth, material) {
     new THREE.BoxGeometry(width, height, depth),
     material
   );
-
   wall.position.set(x, y, z);
   scene.add(wall);
 }
 
-function resizeGame() {
-  if (!camera || !renderer) return;
+function addStartOverlay() {
+  const overlay = document.createElement('div');
+  overlay.id = 'start-overlay';
 
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
+  Object.assign(overlay.style, {
+    position: 'fixed',
+    inset: '0',
+    display: 'grid',
+    placeContent: 'center',
+    gap: '12px',
+    textAlign: 'center',
+    background: 'rgba(8, 8, 7, 0.82)',
+    zIndex: '5',
+    padding: '24px'
+  });
 
-  renderer.setSize(window.innerWidth, window.innerHeight);
-}
+  overlay.innerHTML = `
+    <h1 style="letter-spacing:0.15em">LEVEL 0</h1>
+    <p>YOU ARE NOT SUPPOSED TO BE HERE.</p>
+    <p>WASD: MOVE &nbsp; | &nbsp; SHIFT: RUN</p>
+    <p>Click below to begin and use your mouse to look around.</p>
+    <button id="start-button" style="margin:auto; padding:12px 24px">
+      ENTER THE BACKROOMS
+    </button>
+  `;
 
-function animate() {
-  animationFrame = requestAnimationFrame(animate);
-  renderer.render(scene, camera);
-}
+  document.body.appendChild(overlay);
 
-function showError(error) {
-  console.error('The Backrooms failed to initialize:', error);
-
-  loading.classList.add('error');
-  loading.querySelector('p').textContent =
-    'Unable to initialize the 3D scene. Check the browser console.';
-}
-
-try {
-  initializeGame();
-} catch (error) {
-  showError(error);
-}
-```
+  document.query
