@@ -1,7 +1,7 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js';
 
 // ========================================
-// THE BACKROOMS — MAIN GAME
+// THE BACKROOMS — LARGE EXPLORATION MAP
 // ========================================
 
 const canvas = document.querySelector('#game');
@@ -14,6 +14,17 @@ let pointerLocked = false;
 let previousTime = 0;
 
 const keys = {};
+const GRID_SIZE = 51;       // 51 x 51 cells
+const CELL_SIZE = 4;        // about 204 x 204 metres
+const WALL_HEIGHT = 4;
+const WALL_THICKNESS = 0.22;
+const HALF_WORLD = GRID_SIZE * CELL_SIZE / 2;
+const PLAYER_RADIUS = 0.32;
+
+let maze = [];
+let wallMaterial;
+let floorMaterial;
+let ceilingMaterial;
 
 const player = {
   height: 1.7,
@@ -23,6 +34,13 @@ const player = {
   yaw: 0,
   pitch: 0
 };
+
+const DIRECTIONS = [
+  { name: 'N', dr: -1, dc: 0, opposite: 'S' },
+  { name: 'E', dr: 0, dc: 1, opposite: 'W' },
+  { name: 'S', dr: 1, dc: 0, opposite: 'N' },
+  { name: 'W', dr: 0, dc: -1, opposite: 'E' }
+];
 
 // ========================================
 // INITIALIZATION
@@ -35,29 +53,41 @@ function initializeGame() {
 
   scene = new THREE.Scene();
   scene.background = new THREE.Color('#c8b86b');
-  scene.fog = new THREE.Fog('#c8b86b', 4, 32);
+  scene.fog = new THREE.Fog('#c8b86b', 8, 48);
 
   camera = new THREE.PerspectiveCamera(
     75,
     window.innerWidth / window.innerHeight,
     0.1,
-    100
+    260
   );
-
-  camera.position.set(0, player.height, 4);
   camera.rotation.order = 'YXZ';
 
   renderer = new THREE.WebGLRenderer({
-    canvas: canvas,
+    canvas,
     antialias: false,
     powerPreference: 'high-performance'
   });
-
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = false;
 
-  createLevelOne();
+  wallMaterial = new THREE.MeshStandardMaterial({
+    color: '#c5b85e',
+    roughness: 1
+  });
+  floorMaterial = new THREE.MeshStandardMaterial({
+    color: '#77734c',
+    roughness: 1
+  });
+  ceilingMaterial = new THREE.MeshStandardMaterial({
+    color: '#aaa58b',
+    roughness: 1
+  });
+
+  generateMaze();
+  createEnvironment();
+  placePlayerAtStart();
   addStartOverlay();
 
   window.addEventListener('resize', resizeGame);
@@ -65,96 +95,208 @@ function initializeGame() {
   window.addEventListener('keyup', onKeyUp);
   document.addEventListener('pointerlockchange', onPointerLockChange);
   document.addEventListener('mousemove', onMouseMove);
-
   document.addEventListener('visibilitychange', () => {
     previousTime = 0;
-
     if (document.hidden) {
-      for (const key in keys) {
-        keys[key] = false;
-      }
+      for (const key in keys) keys[key] = false;
     }
   });
 
   loading.classList.add('hidden');
-
   animate();
 }
 
 // ========================================
-// LEVEL 0 ENVIRONMENT
+// PROCEDURAL MAZE GENERATION
 // ========================================
 
-function createLevelOne() {
-  const floorMaterial = new THREE.MeshStandardMaterial({
-    color: '#77734c',
-    roughness: 1
-  });
-
-  const wallMaterial = new THREE.MeshStandardMaterial({
-    color: '#c5b85e',
-    roughness: 1
-  });
-
-  const ceilingMaterial = new THREE.MeshStandardMaterial({
-    color: '#aaa58b',
-    roughness: 1
-  });
-
-  // Floor
-  const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(40, 40),
-    floorMaterial
+function generateMaze() {
+  maze = Array.from({ length: GRID_SIZE }, () =>
+    Array.from({ length: GRID_SIZE }, () => ({
+      N: true, E: true, S: true, W: true, visited: false
+    }))
   );
 
-  floor.rotation.x = -Math.PI / 2;
-  scene.add(floor);
+  // Randomized depth-first search makes a connected maze.
+  const stack = [{ r: Math.floor(GRID_SIZE / 2), c: Math.floor(GRID_SIZE / 2) }];
+  maze[stack[0].r][stack[0].c].visited = true;
 
-  // Ceiling
-  const ceiling = new THREE.Mesh(
-    new THREE.PlaneGeometry(40, 40),
-    ceilingMaterial
-  );
+  while (stack.length) {
+    const current = stack[stack.length - 1];
+    const options = [];
 
-  ceiling.rotation.x = Math.PI / 2;
-  ceiling.position.y = 4;
-  scene.add(ceiling);
+    for (const direction of DIRECTIONS) {
+      const nr = current.r + direction.dr;
+      const nc = current.c + direction.dc;
+      if (nr < 0 || nr >= GRID_SIZE || nc < 0 || nc >= GRID_SIZE) continue;
+      if (!maze[nr][nc].visited) options.push({ direction, nr, nc });
+    }
 
-  // Outer walls
-  addWall(0, 2, -20, 40, 4, 0.3, wallMaterial);
-  addWall(0, 2, 20, 40, 4, 0.3, wallMaterial);
-  addWall(-20, 2, 0, 0.3, 4, 40, wallMaterial);
-  addWall(20, 2, 0, 0.3, 4, 40, wallMaterial);
+    if (!options.length) {
+      stack.pop();
+      continue;
+    }
 
-  // Interior partitions
-  addWall(-5, 2, -5, 0.3, 4, 10, wallMaterial);
-  addWall(5, 2, 3, 0.3, 4, 10, wallMaterial);
-  addWall(0, 2, -10, 10, 4, 0.3, wallMaterial);
+    const choice = options[Math.floor(Math.random() * options.length)];
+    maze[current.r][current.c][choice.direction.name] = false;
+    maze[choice.nr][choice.nc][choice.direction.opposite] = false;
+    maze[choice.nr][choice.nc].visited = true;
+    stack.push({ r: choice.nr, c: choice.nc });
+  }
 
-  // Lighting
-  scene.add(new THREE.AmbientLight('#fff1c2', 1.5));
+  // Open some extra walls to create loops and alternate routes.
+  const loopChance = 0.085;
+  for (let r = 0; r < GRID_SIZE; r++) {
+    for (let c = 0; c < GRID_SIZE; c++) {
+      if (c < GRID_SIZE - 1 && maze[r][c].E && Math.random() < loopChance) {
+        maze[r][c].E = false;
+        maze[r][c + 1].W = false;
+      }
+      if (r < GRID_SIZE - 1 && maze[r][c].S && Math.random() < loopChance) {
+        maze[r][c].S = false;
+        maze[r + 1][c].N = false;
+      }
+    }
+  }
 
-  const ceilingLight = new THREE.PointLight('#fff4c9', 30, 24);
-  ceilingLight.position.set(0, 3.6, 0);
-  scene.add(ceilingLight);
-
-  const secondLight = new THREE.PointLight('#fff4c9', 20, 18);
-  secondLight.position.set(-8, 3.5, -8);
-  scene.add(secondLight);
+  // Add a few broad rooms by opening several neighboring walls.
+  // These provide occasional spaces that feel different from narrow corridors.
+  for (let room = 0; room < 16; room++) {
+    const r = 2 + Math.floor(Math.random() * (GRID_SIZE - 4));
+    const c = 2 + Math.floor(Math.random() * (GRID_SIZE - 4));
+    for (const [dr, dc, wall, opposite] of [
+      [0, 1, 'E', 'W'], [1, 0, 'S', 'N']
+    ]) {
+      const nr = r + dr;
+      const nc = c + dc;
+      maze[r][c][wall] = false;
+      maze[nr][nc][opposite] = false;
+    }
+  }
 }
 
-function addWall(x, y, z, width, height, depth, material) {
-  const wall = new THREE.Mesh(
-    new THREE.BoxGeometry(width, height, depth),
-    material
-  );
+// ========================================
+// BUILD THE LEVEL
+// ========================================
 
-  wall.position.set(x, y, z);
+function createEnvironment() {
+  const worldSize = GRID_SIZE * CELL_SIZE;
+
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(worldSize, worldSize),
+    floorMaterial
+  );
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = 0;
+  scene.add(floor);
+
+  const ceiling = new THREE.Mesh(
+    new THREE.PlaneGeometry(worldSize, worldSize),
+    ceilingMaterial
+  );
+  ceiling.rotation.x = Math.PI / 2;
+  ceiling.position.y = WALL_HEIGHT;
+  scene.add(ceiling);
+
+  buildMergedWalls();
+
+  // Low-cost ambient illumination plus a grid of ceiling lights.
+  scene.add(new THREE.AmbientLight('#fff1c2', 1.15));
+
+  for (let r = 3; r < GRID_SIZE; r += 6) {
+    for (let c = 3; c < GRID_SIZE; c += 6) {
+      const light = new THREE.PointLight('#fff0bd', 18, 17);
+      light.position.set(cellCenter(c), 3.55, cellCenter(r));
+      scene.add(light);
+
+      // Simple visible fluorescent panel.
+      const panel = new THREE.Mesh(
+        new THREE.BoxGeometry(1.25, 0.05, 0.38),
+        new THREE.MeshBasicMaterial({ color: '#fff7d8' })
+      );
+      panel.position.set(cellCenter(c), 3.92, cellCenter(r));
+      scene.add(panel);
+    }
+  }
+}
+
+function buildMergedWalls() {
+  // Merge consecutive wall segments into long meshes to reduce draw calls.
+  // Horizontal boundaries (north/south walls).
+  for (let boundaryR = 0; boundaryR <= GRID_SIZE; boundaryR++) {
+    let runStart = -1;
+    for (let c = 0; c <= GRID_SIZE; c++) {
+      let hasWall = false;
+      if (c < GRID_SIZE) {
+        if (boundaryR === 0) {
+          hasWall = true;
+        } else if (boundaryR === GRID_SIZE) {
+          hasWall = true;
+        } else {
+          hasWall = maze[boundaryR - 1][c].S;
+        }
+      }
+
+      if (hasWall && runStart === -1) runStart = c;
+      if ((!hasWall || c === GRID_SIZE) && runStart !== -1) {
+        const length = c - runStart;
+        const x = -HALF_WORLD + (runStart + length / 2) * CELL_SIZE;
+        const z = -HALF_WORLD + boundaryR * CELL_SIZE;
+        addWall(x, z, length * CELL_SIZE, WALL_THICKNESS);
+        runStart = -1;
+      }
+    }
+  }
+
+  // Vertical boundaries (east/west walls).
+  for (let boundaryC = 0; boundaryC <= GRID_SIZE; boundaryC++) {
+    let runStart = -1;
+    for (let r = 0; r <= GRID_SIZE; r++) {
+      let hasWall = false;
+      if (r < GRID_SIZE) {
+        if (boundaryC === 0 || boundaryC === GRID_SIZE) {
+          hasWall = true;
+        } else {
+          hasWall = maze[r][boundaryC - 1].E;
+        }
+      }
+
+      if (hasWall && runStart === -1) runStart = r;
+      if ((!hasWall || r === GRID_SIZE) && runStart !== -1) {
+        const length = r - runStart;
+        const x = -HALF_WORLD + boundaryC * CELL_SIZE;
+        const z = -HALF_WORLD + (runStart + length / 2) * CELL_SIZE;
+        addWall(x, z, WALL_THICKNESS, length * CELL_SIZE);
+        runStart = -1;
+      }
+    }
+  }
+}
+
+function addWall(x, z, width, depth) {
+  const wall = new THREE.Mesh(
+    new THREE.BoxGeometry(width, WALL_HEIGHT, depth),
+    wallMaterial
+  );
+  wall.position.set(x, WALL_HEIGHT / 2, z);
   scene.add(wall);
 }
 
+function cellCenter(index) {
+  return -HALF_WORLD + (index + 0.5) * CELL_SIZE;
+}
+
+function placePlayerAtStart() {
+  const startR = Math.floor(GRID_SIZE / 2);
+  const startC = Math.floor(GRID_SIZE / 2);
+  camera.position.set(cellCenter(startC), player.height, cellCenter(startR));
+  player.yaw = 0;
+  player.pitch = 0;
+  camera.rotation.set(0, 0, 0);
+}
+
 // ========================================
-// START SCREEN — NO HTML TEMPLATE STRINGS
+// START SCREEN
 // ========================================
 
 function addStartOverlay() {
@@ -181,15 +323,16 @@ function addStartOverlay() {
   overlay.appendChild(title);
 
   const level = document.createElement('h2');
-  level.textContent = 'LEVEL 0';
+  level.textContent = 'LEVEL 0 — THE MAZE';
   level.style.color = '#d9c66b';
   overlay.appendChild(level);
 
   const messages = [
     'YOU ARE NOT SUPPOSED TO BE HERE.',
-    'WASD: MOVE | SHIFT: RUN',
+    `A sprawling ${GRID_SIZE * CELL_SIZE} × ${GRID_SIZE * CELL_SIZE} metre maze awaits.`,
+    'WASD: MOVE  |  SHIFT: RUN',
     'Move your mouse to look around.',
-    'Find a way out. Something may be watching.',
+    'The layout changes every time the game loads.',
     'Press ESC to release your mouse.'
   ];
 
@@ -217,9 +360,7 @@ function addStartOverlay() {
   document.body.appendChild(overlay);
 
   startButton.addEventListener('click', () => {
-    if (canvas.requestPointerLock) {
-      canvas.requestPointerLock();
-    }
+    if (canvas.requestPointerLock) canvas.requestPointerLock();
   });
 }
 
@@ -229,17 +370,12 @@ function addStartOverlay() {
 
 function onPointerLockChange() {
   pointerLocked = document.pointerLockElement === canvas;
-
   const overlay = document.querySelector('#start-overlay');
 
-  if (overlay) {
-    overlay.style.display = pointerLocked ? 'none' : 'grid';
-  }
+  if (overlay) overlay.style.display = pointerLocked ? 'none' : 'grid';
 
   if (!pointerLocked) {
-    for (const key in keys) {
-      keys[key] = false;
-    }
+    for (const key in keys) keys[key] = false;
   }
 }
 
@@ -248,7 +384,6 @@ function onMouseMove(event) {
 
   player.yaw -= event.movementX * player.sensitivity;
   player.pitch -= event.movementY * player.sensitivity;
-
   player.pitch = THREE.MathUtils.clamp(
     player.pitch,
     -Math.PI / 2 + 0.05,
@@ -261,12 +396,11 @@ function onMouseMove(event) {
 }
 
 // ========================================
-// KEYBOARD CONTROLS
+// KEYBOARD CONTROLS & WALL COLLISION
 // ========================================
 
 function onKeyDown(event) {
   keys[event.code] = true;
-
   if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space'].includes(event.code)) {
     event.preventDefault();
   }
@@ -276,28 +410,38 @@ function onKeyUp(event) {
   keys[event.code] = false;
 }
 
-// ========================================
-// PLAYER MOVEMENT
-// ========================================
+function worldToCell(x, z) {
+  return {
+    c: Math.floor((x + HALF_WORLD) / CELL_SIZE),
+    r: Math.floor((z + HALF_WORLD) / CELL_SIZE)
+  };
+}
+
+function canMoveTo(x, z) {
+  const from = worldToCell(camera.position.x, camera.position.z);
+  const to = worldToCell(x, z);
+
+  if (to.r < 0 || to.r >= GRID_SIZE || to.c < 0 || to.c >= GRID_SIZE) {
+    return false;
+  }
+  if (from.r < 0 || from.r >= GRID_SIZE || from.c < 0 || from.c >= GRID_SIZE) {
+    return false;
+  }
+
+  if (to.c > from.c && maze[from.r][from.c].E) return false;
+  if (to.c < from.c && maze[from.r][from.c].W) return false;
+  if (to.r > from.r && maze[from.r][from.c].S) return false;
+  if (to.r < from.r && maze[from.r][from.c].N) return false;
+
+  return true;
+}
 
 function updatePlayer(delta) {
   if (!pointerLocked) return;
 
-  const isRunning = keys.ShiftLeft || keys.ShiftRight;
-  const speed = isRunning ? player.runSpeed : player.speed;
-
-  const forward = new THREE.Vector3(
-    -Math.sin(player.yaw),
-    0,
-    -Math.cos(player.yaw)
-  );
-
-  const right = new THREE.Vector3(
-    Math.cos(player.yaw),
-    0,
-    -Math.sin(player.yaw)
-  );
-
+  const speed = (keys.ShiftLeft || keys.ShiftRight) ? player.runSpeed : player.speed;
+  const forward = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
+  const right = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
   const movement = new THREE.Vector3();
 
   if (keys.KeyW) movement.add(forward);
@@ -307,40 +451,33 @@ function updatePlayer(delta) {
 
   if (movement.lengthSq() > 0) {
     movement.normalize().multiplyScalar(speed * delta);
-    camera.position.add(movement);
+
+    // Axis-separated movement lets the player slide along walls.
+    const nextX = camera.position.x + movement.x;
+    if (canMoveTo(nextX, camera.position.z)) camera.position.x = nextX;
+
+    const nextZ = camera.position.z + movement.z;
+    if (canMoveTo(camera.position.x, nextZ)) camera.position.z = nextZ;
   }
 
-  // Temporary world boundaries; wall collision will be added later.
-  camera.position.x = THREE.MathUtils.clamp(camera.position.x, -19, 19);
-  camera.position.z = THREE.MathUtils.clamp(camera.position.z, -19, 19);
   camera.position.y = player.height;
 }
 
 // ========================================
-// RESIZE
+// RESIZE & GAME LOOP
 // ========================================
 
 function resizeGame() {
   if (!camera || !renderer) return;
-
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
-// ========================================
-// GAME LOOP
-// ========================================
-
 function animate(time = 0) {
   requestAnimationFrame(animate);
-
-  const delta = previousTime === 0
-    ? 0
-    : Math.min((time - previousTime) / 1000, 0.05);
-
+  const delta = previousTime === 0 ? 0 : Math.min((time - previousTime) / 1000, 0.05);
   previousTime = time;
-
   updatePlayer(delta);
   renderer.render(scene, camera);
 }
@@ -351,25 +488,14 @@ function animate(time = 0) {
 
 function showError(error) {
   console.error('The Backrooms failed to initialize:', error);
-
-  if (!loading) {
-    return;
-  }
-
+  if (!loading) return;
   loading.classList.remove('hidden');
   loading.classList.add('error');
-
   const message = loading.querySelector('p');
-
   if (message) {
-    message.textContent =
-      'Unable to initialize the 3D scene. Check the browser console.';
+    message.textContent = 'Unable to initialize the 3D scene. Check the browser console.';
   }
 }
-
-// ========================================
-// START GAME
-// ========================================
 
 try {
   initializeGame();
