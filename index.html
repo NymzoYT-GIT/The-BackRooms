@@ -1,0 +1,76 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#080807">
+
+  <title>The Backrooms</title>
+
+  <link rel="stylesheet" href="style.css">
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #080807;
+      color: #f5f0d8;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    #game {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    #loading {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      display: grid;
+      place-content: center;
+      gap: 12px;
+      text-align: center;
+      background: #080807;
+    }
+
+    #loading h1 {
+      margin: 0;
+      font-size: clamp(2rem, 7vw, 4rem);
+      letter-spacing: 0.15em;
+    }
+
+    #loading p {
+      color: #b5ae8d;
+      letter-spacing: 0.08em;
+    }
+
+    #loading.error p {
+      color: #ff8b8b;
+    }
+  </style>
+</head>
+
+<body>
+  <canvas id="game"></canvas>
+
+  <div id="loading">
+    <h1>THE BACKROOMS</h1>
+    <p>INITIALIZING...</p>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
+```
