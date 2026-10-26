@@ -29,6 +29,10 @@ const player = {
 // ========================================
 
 function initializeGame() {
+  if (!canvas || !loading) {
+    throw new Error('Required #game canvas or #loading element is missing.');
+  }
+
   scene = new THREE.Scene();
   scene.background = new THREE.Color('#c8b86b');
   scene.fog = new THREE.Fog('#c8b86b', 4, 32);
@@ -49,10 +53,7 @@ function initializeGame() {
     powerPreference: 'high-performance'
   });
 
-  renderer.setPixelRatio(
-    Math.min(window.devicePixelRatio || 1, 1.25)
-  );
-
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = false;
 
@@ -62,12 +63,7 @@ function initializeGame() {
   window.addEventListener('resize', resizeGame);
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
-
-  document.addEventListener(
-    'pointerlockchange',
-    onPointerLockChange
-  );
-
+  document.addEventListener('pointerlockchange', onPointerLockChange);
   document.addEventListener('mousemove', onMouseMove);
 
   document.addEventListener('visibilitychange', () => {
@@ -112,7 +108,6 @@ function createLevelOne() {
   );
 
   floor.rotation.x = -Math.PI / 2;
-  floor.position.y = 0;
   scene.add(floor);
 
   // Ceiling
@@ -136,44 +131,19 @@ function createLevelOne() {
   addWall(5, 2, 3, 0.3, 4, 10, wallMaterial);
   addWall(0, 2, -10, 10, 4, 0.3, wallMaterial);
 
-  // Ambient lighting
-  const ambientLight = new THREE.AmbientLight(
-    '#fff1c2',
-    1.5
-  );
+  // Lighting
+  scene.add(new THREE.AmbientLight('#fff1c2', 1.5));
 
-  scene.add(ambientLight);
-
-  // Main ceiling light
-  const ceilingLight = new THREE.PointLight(
-    '#fff4c9',
-    30,
-    24
-  );
-
+  const ceilingLight = new THREE.PointLight('#fff4c9', 30, 24);
   ceilingLight.position.set(0, 3.6, 0);
   scene.add(ceilingLight);
 
-  // Secondary ceiling light
-  const secondLight = new THREE.PointLight(
-    '#fff4c9',
-    20,
-    18
-  );
-
+  const secondLight = new THREE.PointLight('#fff4c9', 20, 18);
   secondLight.position.set(-8, 3.5, -8);
   scene.add(secondLight);
 }
 
-function addWall(
-  x,
-  y,
-  z,
-  width,
-  height,
-  depth,
-  material
-) {
+function addWall(x, y, z, width, height, depth, material) {
   const wall = new THREE.Mesh(
     new THREE.BoxGeometry(width, height, depth),
     material
@@ -184,12 +154,11 @@ function addWall(
 }
 
 // ========================================
-// START SCREEN
+// START SCREEN — NO HTML TEMPLATE STRINGS
 // ========================================
 
 function addStartOverlay() {
   const overlay = document.createElement('div');
-
   overlay.id = 'start-overlay';
 
   Object.assign(overlay.style, {
@@ -199,55 +168,53 @@ function addStartOverlay() {
     placeContent: 'center',
     gap: '12px',
     textAlign: 'center',
-    background: 'rgba(8, 8, 7, 0.82)',
+    background: 'rgba(8, 8, 7, 0.92)',
     color: '#f5f0d8',
     zIndex: '5',
     padding: '24px',
     fontFamily: 'Arial, Helvetica, sans-serif'
   });
 
-  // Keep the HTML template enclosed by backticks.
-  overlay.innerHTML = `
-    <h1 style="letter-spacing:0.15em">
-      THE BACKROOMS
-    </h1>
+  const title = document.createElement('h1');
+  title.textContent = 'THE BACKROOMS';
+  title.style.letterSpacing = '0.15em';
+  overlay.appendChild(title);
 
-    <h2 style="color:#d9c66b">
-      LEVEL 0
-    </h2>
+  const level = document.createElement('h2');
+  level.textContent = 'LEVEL 0';
+  level.style.color = '#d9c66b';
+  overlay.appendChild(level);
 
-    <p>YOU ARE NOT SUPPOSED TO BE HERE.</p>
+  const messages = [
+    'YOU ARE NOT SUPPOSED TO BE HERE.',
+    'WASD: MOVE | SHIFT: RUN',
+    'Move your mouse to look around.',
+    'Find a way out. Something may be watching.',
+    'Press ESC to release your mouse.'
+  ];
 
-    <p>WASD: MOVE &nbsp; | &nbsp; SHIFT: RUN</p>
+  for (const message of messages) {
+    const paragraph = document.createElement('p');
+    paragraph.textContent = message;
+    overlay.appendChild(paragraph);
+  }
 
-    <p>Move your mouse to look around.</p>
+  const startButton = document.createElement('button');
+  startButton.id = 'start-button';
+  startButton.textContent = 'ENTER THE BACKROOMS';
 
-    <p style="color:#aaa58b">
-      Find a way out. Something may be watching.
-    </p>
+  Object.assign(startButton.style, {
+    margin: '12px auto',
+    padding: '12px 24px',
+    background: '#242316',
+    color: '#f5f0d8',
+    border: '1px solid #d9c66b',
+    cursor: 'pointer',
+    font: 'inherit'
+  });
 
-    <button
-      id="start-button"
-      style="
-        margin: 12px auto;
-        padding: 12px 24px;
-        background: #242316;
-        color: #f5f0d8;
-        border: 1px solid #d9c66b;
-        cursor: pointer;
-      "
-    >
-      ENTER THE BACKROOMS
-    </button>
-
-    <p style="font-size:12px;color:#aaa58b">
-      Press ESC to release your mouse.
-    </p>
-  `;
-
+  overlay.appendChild(startButton);
   document.body.appendChild(overlay);
-
-  const startButton = document.querySelector('#start-button');
 
   startButton.addEventListener('click', () => {
     if (canvas.requestPointerLock) {
@@ -300,11 +267,7 @@ function onMouseMove(event) {
 function onKeyDown(event) {
   keys[event.code] = true;
 
-  if (
-    ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space'].includes(
-      event.code
-    )
-  ) {
+  if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space'].includes(event.code)) {
     event.preventDefault();
   }
 }
@@ -320,12 +283,8 @@ function onKeyUp(event) {
 function updatePlayer(delta) {
   if (!pointerLocked) return;
 
-  const isRunning =
-    keys.ShiftLeft || keys.ShiftRight;
-
-  const speed = isRunning
-    ? player.runSpeed
-    : player.speed;
+  const isRunning = keys.ShiftLeft || keys.ShiftRight;
+  const speed = isRunning ? player.runSpeed : player.speed;
 
   const forward = new THREE.Vector3(
     -Math.sin(player.yaw),
@@ -347,24 +306,13 @@ function updatePlayer(delta) {
   if (keys.KeyA) movement.sub(right);
 
   if (movement.lengthSq() > 0) {
-    movement.normalize();
-    movement.multiplyScalar(speed * delta);
+    movement.normalize().multiplyScalar(speed * delta);
     camera.position.add(movement);
   }
 
-  // Temporary boundaries until proper wall collision is added.
-  camera.position.x = THREE.MathUtils.clamp(
-    camera.position.x,
-    -19,
-    19
-  );
-
-  camera.position.z = THREE.MathUtils.clamp(
-    camera.position.z,
-    -19,
-    19
-  );
-
+  // Temporary world boundaries; wall collision will be added later.
+  camera.position.x = THREE.MathUtils.clamp(camera.position.x, -19, 19);
+  camera.position.z = THREE.MathUtils.clamp(camera.position.z, -19, 19);
   camera.position.y = player.height;
 }
 
@@ -375,15 +323,9 @@ function updatePlayer(delta) {
 function resizeGame() {
   if (!camera || !renderer) return;
 
-  camera.aspect =
-    window.innerWidth / window.innerHeight;
-
+  camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
-
-  renderer.setSize(
-    window.innerWidth,
-    window.innerHeight
-  );
+  renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
 // ========================================
@@ -400,7 +342,6 @@ function animate(time = 0) {
   previousTime = time;
 
   updatePlayer(delta);
-
   renderer.render(scene, camera);
 }
 
@@ -409,10 +350,11 @@ function animate(time = 0) {
 // ========================================
 
 function showError(error) {
-  console.error(
-    'The Backrooms failed to initialize:',
-    error
-  );
+  console.error('The Backrooms failed to initialize:', error);
+
+  if (!loading) {
+    return;
+  }
 
   loading.classList.remove('hidden');
   loading.classList.add('error');
